@@ -33,9 +33,7 @@ import java.util.Properties;
  *   ├─ Reads from replication slot
  *   │
  *   ▼
- * JSON Deserial
-
-ization
+ * JSON Deserialization
  *   │
  *   ├─ Parse CDC events (before/after values)
  *   ├─ Filter for INSERT operations (new orders)

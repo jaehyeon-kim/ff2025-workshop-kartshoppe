@@ -1,5 +1,6 @@
 package com.ververica.composable_job.flink.inventory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ververica.composable_job.flink.inventory.patterns.hybrid_source.HybridSourceExample;
 import com.ververica.composable_job.flink.inventory.shared.config.InventoryConfig;
 import com.ververica.composable_job.flink.inventory.shared.model.AlertEvent;
@@ -11,6 +12,8 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.connector.base.source.hybrid.HybridSource;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -97,6 +100,7 @@ import org.slf4j.LoggerFactory;
 public class InventoryManagementJobWithOrders {
 
     private static final Logger LOG = LoggerFactory.getLogger(InventoryManagementJobWithOrders.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static void main(String[] args) throws Exception {
 
@@ -138,6 +142,26 @@ public class InventoryManagementJobWithOrders {
             .name("Parse Product JSON")
             .uid("product-parser");
 
+        // =============================================================
+        // NEW STEP: Sink Processed Products to 'products' topic
+        // =============================================================
+        LOG.info("\n📤 Sinking clean product data to 'products' topic for other services");
+
+        KafkaSink<String> productsSink = KafkaSink.<String>builder()
+            .setBootstrapServers(config.getKafkaBootstrapServers())
+            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+                .setTopic("products")
+                .setValueSerializationSchema(new SimpleStringSchema())
+                .build()
+            )
+            .build();
+
+        productStream
+            .map(product -> MAPPER.writeValueAsString(product))
+            .sinkTo(productsSink)
+            .name("Sink to products topic")
+            .uid("products-sink");
+
         // ========================================
         // STEP 3: PATTERN 05 - Order Events Source (NEW!)
         // ========================================
@@ -166,58 +190,79 @@ public class InventoryManagementJobWithOrders {
             .uid("order-parser");
 
         // ========================================
-        // STEP 4: PATTERNS 02, 03, 04 - Product Inventory Tracking
+        // STEP 4, 5, 6, 7 COMBINED: Connect streams for shared state processing
         // ========================================
+        LOG.info("\n🤝 Connecting product and order streams to operate on a single, shared state...");
 
-        LOG.info("\n🔧 PATTERNS 02, 03, 04: Product Inventory State Management");
+        SingleOutputStreamOperator<InventoryEvent> allInventoryEvents = productStream
+                .keyBy(product -> product.productId)
+                .connect(orderStream.keyBy(order -> order.productId))
+                .process(new SharedInventoryProcessor())
+                .name("Shared Inventory State Processor")
+                .uid("shared-inventory-state");
 
-        SingleOutputStreamOperator<InventoryEvent> productInventoryEvents = productStream
-            .keyBy(product -> product.productId)
-            .process(new InventoryStateFunction())
-            .name("Product Inventory State (Patterns 02+03+04)")
-            .uid("product-inventory-state");
+        // Extract the side outputs for alerts directly from the new, single operator.
+        DataStream<AlertEvent> allAlerts = allInventoryEvents.getSideOutput(SharedInventoryProcessor.LOW_STOCK_TAG)
+                .union(allInventoryEvents.getSideOutput(SharedInventoryProcessor.OUT_OF_STOCK_TAG),
+                    allInventoryEvents.getSideOutput(SharedInventoryProcessor.PRICE_DROP_TAG));
 
-        // ========================================
-        // STEP 5: PATTERN 06 - Inventory Deduction from Orders (NEW!)
-        // ========================================
+        ////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////
+        // // ========================================
+        // // STEP 4: PATTERNS 02, 03, 04 - Product Inventory Tracking
+        // // ========================================
 
-        LOG.info("\n📉 PATTERN 06: Inventory Deduction from Orders");
-        LOG.info("   - Orders placed → inventory deducted");
-        LOG.info("   - Shares same keyed state as product updates");
-        LOG.info("   - Detects out-of-stock scenarios");
+        // LOG.info("\n🔧 PATTERNS 02, 03, 04: Product Inventory State Management");
 
-        SingleOutputStreamOperator<InventoryEvent> orderInventoryEvents = orderStream
-            .keyBy(order -> order.productId)
-            .process(new InventoryDeductionFunction())
-            .name("Order Inventory Deduction (Pattern 06)")
-            .uid("order-inventory-deduction");
+        // SingleOutputStreamOperator<InventoryEvent> productInventoryEvents = productStream
+        //     .keyBy(product -> product.productId)
+        //     .process(new InventoryStateFunction())
+        //     .name("Product Inventory State (Patterns 02+03+04)")
+        //     .uid("product-inventory-state");
 
-        // ========================================
-        // STEP 6: Union Both Event Streams
-        // ========================================
+        // // ========================================
+        // // STEP 5: PATTERN 06 - Inventory Deduction from Orders (NEW!)
+        // // ========================================
 
-        LOG.info("\n🔀 Combining Product Updates + Order Deductions");
+        // LOG.info("\n📉 PATTERN 06: Inventory Deduction from Orders");
+        // LOG.info("   - Orders placed → inventory deducted");
+        // LOG.info("   - Shares same keyed state as product updates");
+        // LOG.info("   - Detects out-of-stock scenarios");
 
-        DataStream<InventoryEvent> allInventoryEvents = productInventoryEvents
-            .union(orderInventoryEvents);
+        // SingleOutputStreamOperator<InventoryEvent> orderInventoryEvents = orderStream
+        //     .keyBy(order -> order.productId)
+        //     .process(new InventoryDeductionFunction())
+        //     .name("Order Inventory Deduction (Pattern 06)")
+        //     .uid("order-inventory-deduction");
 
-        // ========================================
-        // STEP 7: PATTERN 04 - Extract Side Outputs
-        // ========================================
+        // // ========================================
+        // // STEP 6: Union Both Event Streams
+        // // ========================================
 
-        LOG.info("\n🎯 PATTERN 04: Extracting Alert Side Outputs");
+        // LOG.info("\n🔀 Combining Product Updates + Order Deductions");
 
-        DataStream<AlertEvent> lowStockAlerts = productInventoryEvents
-            .getSideOutput(InventoryStateFunction.LOW_STOCK_TAG);
+        // DataStream<InventoryEvent> allInventoryEvents = productInventoryEvents
+        //     .union(orderInventoryEvents);
 
-        DataStream<AlertEvent> outOfStockAlerts = productInventoryEvents
-            .getSideOutput(InventoryStateFunction.OUT_OF_STOCK_TAG);
+        // // ========================================
+        // // STEP 7: PATTERN 04 - Extract Side Outputs
+        // // ========================================
 
-        DataStream<AlertEvent> priceDropAlerts = productInventoryEvents
-            .getSideOutput(InventoryStateFunction.PRICE_DROP_TAG);
+        // LOG.info("\n🎯 PATTERN 04: Extracting Alert Side Outputs");
 
-        DataStream<AlertEvent> allAlerts = lowStockAlerts
-            .union(outOfStockAlerts, priceDropAlerts);
+        // DataStream<AlertEvent> lowStockAlerts = productInventoryEvents
+        //     .getSideOutput(InventoryStateFunction.LOW_STOCK_TAG);
+
+        // DataStream<AlertEvent> outOfStockAlerts = productInventoryEvents
+        //     .getSideOutput(InventoryStateFunction.OUT_OF_STOCK_TAG);
+
+        // DataStream<AlertEvent> priceDropAlerts = productInventoryEvents
+        //     .getSideOutput(InventoryStateFunction.PRICE_DROP_TAG);
+
+        // DataStream<AlertEvent> allAlerts = lowStockAlerts
+        //     .union(outOfStockAlerts, priceDropAlerts);
+        ////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////
 
         // ========================================
         // STEP 8: Sinks - Output to Kafka

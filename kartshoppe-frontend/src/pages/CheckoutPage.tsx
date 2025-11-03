@@ -36,10 +36,15 @@ const CheckoutPage: React.FC = () => {
     e.preventDefault()
     setProcessing(true)
 
+    const sessionIdForCheckout = EventTracker.getSessionId();
+    console.log("==> Submitting checkout for sessionId:", sessionIdForCheckout);
+
     try {
       const response = await axios.post('/api/ecommerce/checkout', {
-        sessionId: sessionStorage.getItem('sessionId'),
-        userId: sessionStorage.getItem('userId'),
+        sessionId: sessionIdForCheckout,
+        userId: EventTracker.getUserId(),
+        // sessionId: sessionStorage.getItem('sessionId'),
+        // userId: sessionStorage.getItem('userId'),
         shippingAddress: {
           name: formData.name,
           street: formData.street,

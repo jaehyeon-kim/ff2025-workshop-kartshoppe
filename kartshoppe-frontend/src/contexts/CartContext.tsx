@@ -1,3 +1,4 @@
+import axios from 'axios'; 
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { useWebSocket } from './WebSocketContext'
 import { EventTracker } from '../services/EventTracker'
@@ -37,32 +38,52 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('cart', JSON.stringify(items))
   }, [items])
 
-  const addToCart = (product: any) => {
-    const existingItem = items.find(item => item.productId === product.productId)
-    
-    if (existingItem) {
-      updateQuantity(product.productId, existingItem.quantity + 1)
-    } else {
-      const newItem: CartItem = {
-        productId: product.productId,
-        productName: product.name,
-        price: product.price,
-        quantity: 1,
-        imageUrl: product.imageUrl
+  const updateCartOnBackend = async (productId: string, quantity: number) => {
+      try {
+          const sessionId = EventTracker.getSessionId();
+          await axios.post(`/api/ecommerce/cart/${sessionId}/add`, {
+              productId,
+              userId: EventTracker.getUserId(),
+              quantity, // Send the new total quantity
+          });
+          console.log(`SUCCESS: Backend cart for product ${productId} updated to quantity ${quantity}.`);
+          return true;
+      } catch (error) {
+          console.error(`!!! API CALL FAILED for product ${productId} !!!`, error);
+          return false;
       }
-      setItems([...items, newItem])
-      
-      EventTracker.trackEvent('ADD_TO_CART', {
-        productId: product.productId,
-        value: product.price,
-        quantity: 1
-      })
-      
-      sendMessage({
-        type: 'CART_UPDATE',
-        action: 'ADD',
-        payload: newItem
-      })
+  };
+
+  const addToCart = async (product: any) => {
+    const existingItem = items.find(item => item.productId === product.productId);
+    const newQuantity = existingItem ? existingItem.quantity + 1 : 1;
+
+    const success = await updateCartOnBackend(product.productId, newQuantity);
+    if (success) {
+      if (existingItem) {
+        updateQuantity(product.productId, newQuantity, true);
+      } else {
+        const newItem: CartItem = {
+          productId: product.productId,
+          productName: product.name,
+          price: product.price,
+          quantity: 1,
+          imageUrl: product.imageUrl
+        }
+        setItems([...items, newItem])
+        
+        EventTracker.trackEvent('ADD_TO_CART', {
+          productId: product.productId,
+          value: product.price,
+          quantity: 1
+        })
+        
+        sendMessage({
+          type: 'CART_UPDATE',
+          action: 'ADD',
+          payload: newItem
+        })
+      }
     }
   }
 
@@ -80,12 +101,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
   }
 
-  const updateQuantity = (productId: string, quantity: number) => {
+  const updateQuantity = async (productId: string, quantity: number, fromAddToCart = false) => {
     if (quantity <= 0) {
       removeFromCart(productId)
       return
     }
     
+    if (!fromAddToCart) {
+        const success = await updateCartOnBackend(productId, quantity);
+        if (!success) return;
+    }
+
     setItems(items.map(item =>
       item.productId === productId
         ? { ...item, quantity }

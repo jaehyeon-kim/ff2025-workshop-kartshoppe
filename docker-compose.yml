@@ -60,7 +60,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        rpk topic create websocket_fanout processing_fanout ecommerce_events ecommerce_processing_fanout product_updates recommendations inventory_updates shopping-cart-events basket-patterns product-recommendations -X brokers=redpanda:9092
+        rpk topic create websocket_fanout processing_fanout ecommerce_events ecommerce_processing_fanout product_updates recommendations inventory_updates inventory-events shopping-cart-events basket-patterns product-recommendations -X brokers=redpanda:9092
         echo "Topics created successfully"
 
   quarkus-api:

@@ -23,6 +23,12 @@ public class EcommerceEvent implements Serializable {
     public String productName;
     public int resultCount;
     public String recommendationId;
+    public double cartTotal;
+    public int itemCount;
+    public String orderId;
+    public String categoryName;
+    public double totalAmount;
+    public String category;
 
     public EcommerceEvent() {
     }
