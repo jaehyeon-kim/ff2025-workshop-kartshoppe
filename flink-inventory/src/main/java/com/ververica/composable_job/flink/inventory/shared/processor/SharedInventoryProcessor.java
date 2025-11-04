@@ -15,12 +15,23 @@ import org.apache.flink.util.OutputTag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * A CoProcessFunction that implements the core logic for the inventory management job.
+ * It demonstrates several Flink patterns by processing two distinct input streams
+ * (product updates and order deductions) against a single, shared state.
+ *
+ * This function is the heart of the following patterns:
+ * - PATTERN 01: Multiple Sources & Co-Processing (by its very nature)
+ * - PATTERN 02: Shared Keyed State (using ValueState)
+ * - PATTERN 03: Timers (for stale detection)
+ * - PATTERN 04: Side Outputs (for alerts)
+ */
 public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderItemDeduction, InventoryEvent> {
 
     private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(InventoryStateFunction.class);
 
-    // PATTERN 04: Side Output Tags (must be public static for access outside)
+    // PATTERN 04: Side Output Tags used to route different types of alerts.
     public static final OutputTag<AlertEvent> LOW_STOCK_TAG =
         new OutputTag<AlertEvent>("low-stock-alerts") {};
 
@@ -33,7 +44,7 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
     // Stale detection timeout (1 hour)
     private static final long STALE_TIMEOUT_MS = 60 * 60 * 1000;
 
-    // PATTERN 02: Keyed State
+    // PATTERN 02: Shared Keyed State for inventory, last update time, and the timer itself.
     private transient ValueState<Product> lastProductState;
     private transient ValueState<Long> lastUpdateTimeState;
     private transient ValueState<Long> timerState;
@@ -57,16 +68,19 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
             getRuntimeContext().getIndexOfThisSubtask());
     }
 
+    /**
+     * PATTERN 01: Processes the first input stream (Product updates).
+     */
     @Override
     public void processElement1(Product newProduct, Context ctx, Collector<InventoryEvent> out) throws Exception {
         LOG.info(">>> (Shared Processor) Processing product update for '{}'", newProduct.productId);
         
-        // PATTERN 02: Retrieve state for this product ID
+        // PATTERN 02: Retrieve shared state for this product ID
         Product previousProduct = lastProductState.value();
         long currentTime = System.currentTimeMillis();
         Long previousUpdateTime = lastUpdateTimeState.value();
 
-        // PATTERN 03: Delete old timer and register new one
+        // PATTERN 03: Delete old timer and register a new one to reset the stale clock.
         Long existingTimer = timerState.value();
         if (existingTimer != null) {
             ctx.timerService().deleteProcessingTimeTimer(existingTimer);
@@ -83,11 +97,14 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
             handleProductUpdate(previousProduct, newProduct, currentTime, previousUpdateTime, out, ctx);
         }
 
-        // PATTERN 02: Update state
+        // PATTERN 02: Update shared state with the latest product data and timestamp.
         lastProductState.update(newProduct);
         lastUpdateTimeState.update(currentTime);
     }
 
+    /**
+     * PATTERN 01: Processes the second input stream (Order deductions).
+     */    
     @Override
     public void processElement2(OrderItemDeduction order, Context ctx, Collector<InventoryEvent> out) throws Exception {
         LOG.info(">>> (Shared Processor) Processing order for '{}'", order.productId);
@@ -104,11 +121,13 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
 
         currentProduct.inventory = newInventory;
         
+        // PATTERN 02: Update the shared state with the modified product.
         lastProductState.update(currentProduct);
         
         long currentTime = System.currentTimeMillis();
         lastUpdateTimeState.update(currentTime);
         
+        // PATTERN 03: Reset the stale timer since an update occurred.
         Long existingTimer = timerState.value();
         if (existingTimer != null) {
             ctx.timerService().deleteProcessingTimeTimer(existingTimer);
@@ -131,6 +150,7 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
             .build();
         out.collect(event);
         
+        // PATTERN 04: Check for and emit alerts based on the new inventory level.
         if (newInventory == 0) {
             emitOutOfStockAlert(currentProduct, ctx);
         } else if (newInventory <= 10) {
@@ -139,7 +159,7 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
     }
 
     /**
-     * PATTERN 03: Timer callback for stale detection
+     * PATTERN 03: Timer callback for stale inventory detection.
      */
     @Override
     public void onTimer(
@@ -194,7 +214,7 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
 
         out.collect(event);
 
-        // PATTERN 04: Check for initial low stock
+        // PATTERN 04: Check for alerts on initial product creation.
         if (product.inventory > 0 && product.inventory < 10) {
             emitLowStockAlert(product, ctx);
         } else if (product.inventory == 0) {
@@ -266,7 +286,7 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
 
         out.collect(event);
 
-        // PATTERN 04: Emit low stock alert
+        // PATTERN 04: Emit low stock alert after an inventory change.
         if (current.inventory > 0 && current.inventory < 10) {
             emitLowStockAlert(current, ctx);
         }
@@ -300,13 +320,13 @@ public class SharedInventoryProcessor extends CoProcessFunction<Product, OrderIt
 
         out.collect(event);
 
-        // PATTERN 04: Emit price drop alert if significant decrease
+        // PATTERN 04: Emit a price drop alert if the decrease is significant.
         if (percentChange <= -10.0) {
             emitPriceDropAlert(current, previous.price, percentChange, ctx);
         }
     }
 
-    // PATTERN 04: Side Output Emission Methods
+    // PATTERN 04: Helper methods to emit alerts to the appropriate side output.
     private void emitLowStockAlert(Product product, Context ctx) {
         String severity = product.inventory <= 5 ? "CRITICAL" : "WARNING";
 
