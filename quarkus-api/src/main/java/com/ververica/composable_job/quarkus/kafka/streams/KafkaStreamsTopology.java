@@ -73,32 +73,42 @@ public class KafkaStreamsTopology {
         builder.addStateStore(dataPointStoreBuilder);
         // Product store will be created by Materialized below
 
-        // Process inventory events into product cache table
         KStream<String, String> inventoryStream = builder.stream(
                 "inventory-events",
                 Consumed.with(Serdes.String(), Serdes.String())
         );
         
         // Parse inventory events and extract current product
-        KStream<String, Product> productStream = inventoryStream
-                .mapValues(value -> {
-                    try {
-                        JsonNode node = MAPPER.readTree(value);
-                        if (node.has("currentProduct") && !node.get("currentProduct").isNull()) {
-                            Product product = MAPPER.treeToValue(node.get("currentProduct"), Product.class);
-                            Log.infof("📦 Received product from Kafka: %s (%s) - inventory: %d",
-                                product.productId, product.name, product.inventory);
-                            return product;
-                        }
-                        return null;
-                    } catch (Exception e) {
-                        Log.warn("Failed to parse inventory event: " + e.getMessage());
-                        return null;
+    KStream<String, Product> productStream = inventoryStream
+            .mapValues(value -> {
+                try {
+                    JsonNode node = MAPPER.readTree(value);
+                    String eventType = node.get("eventType").asText();
+
+                    // Ignore the PRODUCT_ADDED event entirely.
+                    // This prevents the race condition and the creation of "skeleton" products.
+                    if ("PRODUCT_ADDED".equals(eventType)) {
+                        return null; // This message will be filtered out and discarded.
                     }
-                })
-                .filter((key, value) -> value != null)
-                .selectKey((key, value) -> value.productId);
-        
+
+                    // For all other event types (like INVENTORY_DECREASED), create a partial update object.
+                    Product partialUpdate = new Product();
+                    partialUpdate.productId = node.get("productId").asText();
+                    if (node.has("currentInventory")) {
+                        partialUpdate.inventory = node.get("currentInventory").asInt();
+                    }
+                    if (node.has("currentPrice")) {
+                        partialUpdate.price = node.get("currentPrice").asDouble();
+                    }
+                    return partialUpdate;
+                } catch (Exception e) {
+                    Log.warn("Failed to parse inventory event: " + e.getMessage());
+                    return null;
+                }
+            })
+            .filter((key, value) -> value != null && value.productId != null)
+            .selectKey((key, value) -> value.productId);
+
         // Materialize as KTable for product cache (CQRS read model)
         KTable<String, Product> productsTable = productStream
                 .toTable(
@@ -107,7 +117,7 @@ public class KafkaStreamsTopology {
                                 .withKeySerde(Serdes.String())
                                 .withValueSerde(productSerde)
                 );
-        
+
         // Forward product updates to WebSocket for real-time updates
         productStream.foreach((key, product) -> {
             productCacheService.updateProduct(product);

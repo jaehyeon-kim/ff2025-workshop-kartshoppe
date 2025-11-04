@@ -33,7 +33,7 @@ function App() {
           <CartProvider>
             <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
               <Navbar />
-              <RecommendationBar />
+              {/* <RecommendationBar /> */}
               <main className="container mx-auto px-4 py-8">
                 <Routes>
                   <Route path="/" element={<HomePage />} />
@@ -46,12 +46,12 @@ function App() {
               </main>
               <FeatureEngineeringPanel />
               <InventoryRefreshButton />
-              <PersonalShopperChat 
+              {/* <PersonalShopperChat 
                 sessionId={sessionId}
                 userId={userId}
                 basket={basket}
                 currentProduct={currentProduct}
-              />
+              /> */}
             </div>
           </CartProvider>
         </ProductCacheProvider>

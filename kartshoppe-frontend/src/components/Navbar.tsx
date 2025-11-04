@@ -21,7 +21,7 @@ const Navbar: React.FC = () => {
               <span className="text-2xl font-bold text-white">
                 KartShoppe
               </span>
-              <div className="text-xs text-ververica-bright-teal">Powered by Ververica</div>
+              <div className="text-xs text-ververica-bright-teal">APAC Roadshow 2025</div>
             </div>
           </Link>
 

@@ -120,14 +120,22 @@ CREATE TABLE IF NOT EXISTS product_views (
 -- ============================================
 
 INSERT INTO products (product_id, product_name, category, brand, price, description, image_url, is_active) VALUES
-    ('PROD_0151', 'BeautyPlus Anti-Aging Serum', 'Beauty', 'BeautyPlus', 89.99, 'Retinol and vitamin C formula. Premium quality from BeautyPlus.', 'https://picsum.photos/400/300?random=1', true),
-    ('PROD_0104', 'ReadMore The Innovation Paradox', 'Books', 'ReadMore', 29.99, 'Bestselling business strategy guide. Premium quality from ReadMore.', 'https://picsum.photos/400/300?random=2', true),
-    ('PROD_0001', 'FutureTech UltraBook Pro 15', 'Electronics', 'FutureTech', 1899.99, 'High-performance laptop with Intel i9, 32GB RAM, 1TB SSD. Premium quality from FutureTech.', 'https://picsum.photos/400/300?random=3', true),
-    ('PROD_0028', 'ModernFit Designer Leather Jacket', 'Fashion', 'ModernFit', 599.99, 'Premium Italian leather with modern cut. Premium quality from ModernFit.', 'https://picsum.photos/400/300?random=4', true),
-    ('PROD_0175', 'Artisan Foods Organic Coffee Beans', 'Food & Grocery', 'Artisan Foods', 34.99, 'Single origin Ethiopian (2 lbs). Premium quality from Artisan Foods.', 'https://picsum.photos/400/300?random=5', true),
-    ('PROD_0054', 'ComfortZone Smart Coffee Maker', 'Home & Garden', 'ComfortZone', 299.99, 'WiFi-enabled with scheduling and grinder. Premium quality from ComfortZone.', 'https://picsum.photos/400/300?random=6', true),
-    ('PROD_0079', 'FitPro Premium Yoga Mat', 'Sports', 'FitPro', 89.99, 'Extra thick with alignment guides. Premium quality from FitPro.', 'https://picsum.photos/400/300?random=7', true),
-    ('PROD_0128', 'KidsJoy LEGO Architecture Set', 'Toys', 'KidsJoy', 149.99, 'Build famous landmarks. Premium quality from KidsJoy.', 'https://picsum.photos/400/300?random=8', true);
+    ('PROD_0001', 'FutureTech UltraBook Pro 15', 'Electronics', 'FutureTech', 1899.99, 'High-performance laptop with Intel i9, 32GB RAM, 1TB SSD. Premium quality from FutureTech.', 'https://picsum.photos/400/300?random=1', true),
+    ('PROD_0003', 'InnovateTech Wireless Noise-Canceling Headphones', 'Electronics', 'InnovateTech', 349.99, 'Premium ANC headphones with 30-hour battery. Premium quality from InnovateTech.', 'https://picsum.photos/400/300?random=3', true),
+    ('PROD_0028', 'ModernFit Designer Leather Jacket', 'Fashion', 'ModernFit', 599.99, 'Premium Italian leather with modern cut. Premium quality from ModernFit.', 'https://picsum.photos/400/300?random=28', true),
+    ('PROD_0029', 'ModernFit Designer Leather Jacket Pro', 'Fashion', 'ModernFit', 719.99, 'Premium Italian leather with modern cut. Premium quality from ModernFit.', 'https://picsum.photos/400/300?random=29', true),
+    ('PROD_0054', 'ComfortZone Smart Coffee Maker', 'Home & Garden', 'ComfortZone', 299.99, 'WiFi-enabled with scheduling and grinder. Premium quality from ComfortZone.', 'https://picsum.photos/400/300?random=54', true),
+    ('PROD_0055', 'SmartHome Smart Coffee Maker Pro', 'Home & Garden', 'SmartHome', 359.99, 'WiFi-enabled with scheduling and grinder. Premium quality from SmartHome.', 'https://picsum.photos/400/300?random=55', true),
+    ('PROD_0079', 'FitPro Premium Yoga Mat', 'Sports', 'FitPro', 89.99, 'Extra thick with alignment guides. Premium quality from FitPro.', 'https://picsum.photos/400/300?random=79', true),
+    ('PROD_0080', 'FitPro Premium Yoga Mat Pro', 'Sports', 'FitPro', 107.99, 'Extra thick with alignment guides. Premium quality from FitPro.', 'https://picsum.photos/400/300?random=80', true),
+    ('PROD_0104', 'ReadMore The Innovation Paradox', 'Books', 'ReadMore', 29.99, 'Bestselling business strategy guide. Premium quality from ReadMore.', 'https://picsum.photos/400/300?random=104', true),
+    ('PROD_0105', 'PageTurner The Innovation Paradox Pro', 'Books', 'PageTurner', 35.99, 'Bestselling business strategy guide. Premium quality from PageTurner.', 'https://picsum.photos/400/300?random=105', true),
+    ('PROD_0128', 'KidsJoy LEGO Architecture Set', 'Toys', 'KidsJoy', 149.99, 'Build famous landmarks. Premium quality from KidsJoy.', 'https://picsum.photos/400/300?random=128', true),
+    ('PROD_0129', 'ToyLand LEGO Architecture Set Pro', 'Toys', 'ToyLand', 179.99, 'Build famous landmarks. Premium quality from ToyLand.', 'https://picsum.photos/400/300?random=129', true),
+    ('PROD_0151', 'BeautyPlus Anti-Aging Serum', 'Beauty', 'BeautyPlus', 89.99, 'Retinol and vitamin C formula. Premium quality from BeautyPlus.', 'https://picsum.photos/400/300?random=151', true),
+    ('PROD_0152', 'GlowUp Anti-Aging Serum Pro', 'Beauty', 'GlowUp', 107.99, 'Retinol and vitamin C formula. Premium quality from GlowUp.', 'https://picsum.photos/400/300?random=152', true),
+    ('PROD_0175', 'Artisan Foods Organic Coffee Beans', 'Food & Grocery', 'Artisan Foods', 34.99, 'Single origin Ethiopian (2 lbs). Premium quality from Artisan Foods.', 'https://picsum.photos/400/300?random=175', true),
+    ('PROD_0176', 'Artisan Foods Organic Coffee Beans Pro', 'Food & Grocery', 'Artisan Foods', 41.99, 'Single origin Ethiopian (2 lbs). Premium quality from Artisan Foods.', 'https://picsum.photos/400/300?random=176', true);
 
 -- ============================================
 -- SAMPLE DATA: INVENTORY
@@ -135,14 +143,22 @@ INSERT INTO products (product_id, product_name, category, brand, price, descript
 -- ============================================
 
 INSERT INTO inventory (product_id, quantity_on_hand, quantity_reserved, reorder_point, reorder_quantity) VALUES
-    ('PROD_0151', 10, 0, 10, 20),
-    ('PROD_0104', 19, 0, 10, 20),
-    ('PROD_0001', 7, 0, 10, 20),
-    ('PROD_0028', 10, 0, 10, 20),
-    ('PROD_0175', 16, 0, 10, 20),
-    ('PROD_0054', 6, 0, 10, 20),
-    ('PROD_0079', 9, 0, 10, 20),
-    ('PROD_0128', 15, 0, 10, 20);
+    ('PROD_0001', 10, 0, 10, 20),
+    ('PROD_0003', 8, 0, 10, 20),
+    ('PROD_0028', 15, 0, 10, 20),
+    ('PROD_0029', 7, 0, 10, 20),
+    ('PROD_0054', 23, 0, 10, 20),
+    ('PROD_0055', 32, 0, 10, 20),
+    ('PROD_0079', 70, 0, 10, 20),
+    ('PROD_0080', 48, 0, 10, 20),
+    ('PROD_0104', 184, 0, 10, 20),
+    ('PROD_0105', 79, 0, 10, 20),
+    ('PROD_0128', 74, 0, 10, 20),
+    ('PROD_0129', 75, 0, 10, 20),
+    ('PROD_0151', 99, 0, 10, 20),
+    ('PROD_0152', 44, 0, 10, 20),
+    ('PROD_0175', 160, 0, 10, 20),
+    ('PROD_0176', 166, 0, 10, 20);
 
 -- ============================================
 -- SAMPLE DATA: CUSTOMERS

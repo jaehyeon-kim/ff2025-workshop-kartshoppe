@@ -14,18 +14,18 @@ while true; do
     echo "📦 Inventory Dashboard - $(date)"
     echo "========================================="
 
-    # Use '|' as a delimiter to preserve spaces in names/categories
+    # Fetch and format products, then sort by productId
     curl -s "$API_URL" | jq -r '
         .products[] |
         [.productId, .name, .category, (.inventory | tostring)] |
         join("|")
-    ' | awk -F'|' '
+    ' | sort -t '|' -k1,1 | awk -F'|' '
         BEGIN {
-            printf "%-12s %-40s %-20s %-10s\n", "ProductID", "Name", "Category", "Inventory";
+            printf "%-12s %-50s %-20s %-10s\n", "ProductID", "Name", "Category", "Inventory";
             print "-------------------------------------------------------------------------------------------"
         }
         {
-            printf "%-12s %-40s %-20s %-10d\n", $1, $2, $3, $4
+            printf "%-12s %-50s %-20s %-10d\n", $1, $2, $3, $4
         }
     '
 
