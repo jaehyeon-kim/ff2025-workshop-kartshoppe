@@ -17,9 +17,12 @@ import java.util.Properties;
 import java.util.Objects;
 
 /**
- * Flink CDC Job: PostgreSQL Orders → Kafka
+ * Flink CDC Job: PostgreSQL Order Items → Kafka
  *
- * This job demonstrates PATTERN: Change Data Capture (CDC) for real-time order processing
+ * This job demonstrates a real-time data pipeline using Change Data Capture (CDC).
+ * It captures INSERT events from the 'order_items' table in PostgreSQL, transforms
+ * the raw CDC event into a simple, clean JSON format, and publishes it to a Kafka topic
+ * for downstream consumption by services like inventory management.
  *
  * ARCHITECTURE:
  * <pre>
@@ -31,15 +34,14 @@ import java.util.Objects;
  * Flink CDC Source (Debezium)
  *   │
  *   ├─ Captures changes via PostgreSQL Write-Ahead Log (WAL)
- *   ├─ Reads from replication slot
+ *   ├─ Reads from a persistent replication slot
  *   │
  *   ▼
- * JSON Deserial
-
-ization
+ * Filter & Transform
  *   │
- *   ├─ Parse CDC events (before/after values)
- *   ├─ Filter for INSERT operations (new orders)
+ *   ├─ Filter for INSERT operations on the 'order_items' table
+ *   ├─ Map the raw Debezium event to a simple JSON object
+ *   │  (e.g., { "productId": ..., "quantity": ..., "orderId": ... })
  *   │
  *   ▼
  * Kafka Sink (order-events topic)
@@ -47,19 +49,20 @@ ization
  *   ├─ Downstream consumers: Inventory Job, Analytics, etc.
  *   │
  *   ▼
- * Inventory Deduction
+ * Inventory Deduction Service
  * </pre>
  *
  * KEY CONCEPTS:
- * - CDC (Change Data Capture): Capture database changes without polling
- * - Debezium: Open-source CDC framework
- * - WAL (Write-Ahead Log): PostgreSQL's transaction log
- * - Replication Slot: Persistent CDC position tracker
+ * - CDC (Change Data Capture): Capture database changes without polling.
+ * - Debezium: Open-source CDC framework used by the Flink connector.
+ * - WAL (Write-Ahead Log): PostgreSQL's transaction log, the source of changes.
+ * - Replication Slot: A cursor that tracks the position in the WAL, ensuring no events are missed.
  *
  * SETUP REQUIREMENTS:
- * 1. PostgreSQL with wal_level=logical (already configured in docker-compose.yml)
- * 2. Publication created: CREATE PUBLICATION paimon_cdc FOR ALL TABLES;
- * 3. Replication slot (auto-created by Flink CDC)
+ * 1. PostgreSQL with `wal_level=logical` (configured in docker-compose.yml).
+ * 2. A PostgreSQL Publication must be created. The name is configurable, e.g.:
+ *    `CREATE PUBLICATION workshop_cdc FOR ALL TABLES;`
+ * 3. A replication slot is automatically created by the Flink CDC source on first run.
  *
  * RUN THIS JOB:
  * <pre>
