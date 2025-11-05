@@ -1,7 +1,8 @@
 package com.ververica.composable_job.flink.ordercdc;
 
-import com.ververica.cdc.connectors.postgres.PostgreSQLSource;
-import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.cdc.debezium.JsonDebeziumDeserializationSchema;
+import org.apache.flink.cdc.connectors.postgres.PostgreSQLSource;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -9,11 +10,11 @@ import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Properties;
+import java.util.Objects;
 
 /**
  * Flink CDC Job: PostgreSQL Orders → Kafka
@@ -33,7 +34,9 @@ import java.util.Properties;
  *   ├─ Reads from replication slot
  *   │
  *   ▼
- * JSON Deserialization
+ * JSON Deserial
+
+ization
  *   │
  *   ├─ Parse CDC events (before/after values)
  *   ├─ Filter for INSERT operations (new orders)
@@ -124,37 +127,44 @@ public class OrderCDCJob {
         );
 
         // ========================================
-        // STEP 3: Filter for INSERT Operations
+        // STEP 3: Filter for INSERT Operations from "order_items"
         // ========================================
 
         LOG.info("\n🔍 Filtering CDC Events");
         LOG.info("   - Filter for 'op=c' (CREATE/INSERT) operations");
         LOG.info("   - Ignore UPDATE/DELETE for this demo");
 
-        DataStream<String> newOrders = cdcStream
+        DataStream<String> newOrderItems = cdcStream
             .filter(new FilterFunction<String>() {
                 @Override
                 public boolean filter(String event) throws Exception {
                     // Filter for INSERT operations (op == 'c' in Debezium)
-                    // and only from orders table
+                    // and only from order_items table
                     return event.contains("\"op\":\"c\"") &&
                            event.contains("\"source\":{") &&
-                           event.contains("\"table\":\"orders\"");
+                           event.contains("\"table\":\"order_items\"");
                 }
             })
             .name("Filter New Orders (INSERT only)");
 
-        // ========================================
-        // STEP 4: Log CDC Events (for debugging)
-        // ========================================
+        // =============================================================
+        // STEP 4: Transform the event using the external Mapper class
+        // Converts to eg)
+        // {
+        //     "quantity": 1,
+        //     "productId": "PROD_0151",
+        //     "orderId": "727237df-9fd6-44f8-8a46-6defe27c7585",
+        //     "timestamp": 1762307641516
+        // }
+        // =============================================================
+        LOG.info("\n✨ Transforming CDC events to custom format");
 
-        newOrders.map(event -> {
-            LOG.info("📦 New Order CDC Event: {}", event.substring(0, Math.min(200, event.length())) + "...");
-            return event;
-        }).name("Log Order CDC Events");
+        DataStream<String> transformedStream = newOrderItems
+                .map(new OrderItemEventMapper())
+                .filter(Objects::nonNull);
 
         // ========================================
-        // STEP 5: Kafka Sink for Order Events
+        // STEP 5: Kafka Sink for Transformed Events
         // ========================================
 
         LOG.info("\n📤 Configuring Kafka Sink");
@@ -171,8 +181,8 @@ public class OrderCDCJob {
             )
             .build();
 
-        newOrders.sinkTo(kafkaSink)
-            .name("Orders → Kafka (order-events)");
+        transformedStream.sinkTo(kafkaSink)
+            .name("Transformed Orders → Kafka (order-events)");
 
         // ========================================
         // STEP 6: Execute Job

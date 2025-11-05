@@ -61,7 +61,6 @@ CREATE TABLE IF NOT EXISTS orders (
     shipping_address TEXT,
     tracking_number VARCHAR(100),
     notes TEXT
-    -- ,
     -- FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
 );
 
@@ -76,7 +75,6 @@ CREATE TABLE IF NOT EXISTS order_items (
     unit_price DECIMAL(10, 2) NOT NULL,
     discount DECIMAL(10, 2) DEFAULT 0.00,
     line_total DECIMAL(10, 2) NOT NULL
-    -- ,
     -- FOREIGN KEY (order_id) REFERENCES orders(order_id),
     -- FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
@@ -95,7 +93,6 @@ CREATE TABLE IF NOT EXISTS inventory (
     reorder_quantity INTEGER DEFAULT 50,
     last_restock_date TIMESTAMP,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    -- ,
     -- FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
@@ -110,7 +107,6 @@ CREATE TABLE IF NOT EXISTS product_views (
     view_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     source VARCHAR(50),
     device_type VARCHAR(50)
-    -- ,
     -- FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
@@ -174,7 +170,7 @@ INSERT INTO customers (customer_id, email, first_name, last_name, phone, city, s
 -- PUBLICATION FOR CDC
 -- ============================================
 -- Create a publication for all tables (Flink CDC will subscribe to this)
-CREATE PUBLICATION paimon_cdc FOR ALL TABLES;
+CREATE PUBLICATION workshop_cdc FOR ALL TABLES;
 
 -- ============================================
 -- INDEXES FOR PERFORMANCE
@@ -219,7 +215,7 @@ FROM customers;
 
 \echo '========================================='
 \echo 'E-Commerce Database Ready for CDC!'
-\echo 'Publication created: paimon_cdc'
+\echo 'Publication created: workshop_cdc'
 \echo 'Tables: products, customers, orders, order_items, inventory, product_views'
 \echo 'WAL Level: logical (CDC-ready)'
 \echo '========================================='
