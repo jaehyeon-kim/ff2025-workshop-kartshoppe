@@ -291,25 +291,29 @@ public class EcommerceResource {
         // Publish Order Items for Inventory Deduction
         //      Comment out if OrderCDCJob is used!
         // ========================================
-        // try {
-        //     Log.info("  Attempting to publish order items to Kafka...");
+        if (!request.useCdc) {
+            try {
+                Log.info("  Attempting to publish order items to Kafka...");
 
-        //     for (CartItem item : cart.items) {
-        //         Map<String, Object> orderItemEvent = new HashMap<>();
-        //         orderItemEvent.put("orderId", order.orderId);
-        //         orderItemEvent.put("productId", item.productId);
-        //         orderItemEvent.put("quantity", item.quantity);
-        //         orderItemEvent.put("timestamp", System.currentTimeMillis());
+                for (CartItem item : cart.items) {
+                    Map<String, Object> orderItemEvent = new HashMap<>();
+                    orderItemEvent.put("orderId", order.orderId);
+                    orderItemEvent.put("productId", item.productId);
+                    orderItemEvent.put("quantity", item.quantity);
+                    orderItemEvent.put("timestamp", System.currentTimeMillis());
 
-        //         String json = MAPPER.writeValueAsString(orderItemEvent);
-        //         orderEventEmitter.send(json);
-        //         Log.infof("    📦 SUCCESSFULLY PUBLISHED order item for inventory deduction: %s x%d", item.productId, item.quantity);
-        //         // Log.infof("📦 Published order item for inventory deduction: %s x%d", item.productId, item.quantity);
-        //     }
-        // } catch (Exception e) {
-        //     Log.error("  ❌ CHECKOUT FAILED: Failed to publish order items to Kafka!", e);
-        //     // Log.error("Failed to publish order items", e);
-        // }
+                    String json = MAPPER.writeValueAsString(orderItemEvent);
+                    orderEventEmitter.send(json);
+                    Log.infof("    📦 SUCCESSFULLY PUBLISHED order item for inventory deduction: %s x%d", item.productId, item.quantity);
+                    // Log.infof("📦 Published order item for inventory deduction: %s x%d", item.productId, item.quantity);
+                }
+            } catch (Exception e) {
+                Log.error("  ❌ CHECKOUT FAILED: Failed to publish order items to Kafka!", e);
+                // Log.error("Failed to publish order items", e);
+            }
+        } else {
+            Log.info("  CDC mode enabled by frontend. Skipping direct Kafka publish.");
+        }
 
         Log.info("✅ CHECKOUT ENDPOINT COMPLETED SUCCESSFULLY."); 
         return Response.ok(order).build();
@@ -357,5 +361,7 @@ public class EcommerceResource {
         public String userId;
         public Order.ShippingAddress shippingAddress;
         public String paymentMethod;
+        // This field will capture the state of the 'Use CDC' checkbox from the frontend.
+        public boolean useCdc; 
     }
 }

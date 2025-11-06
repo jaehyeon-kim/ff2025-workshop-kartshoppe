@@ -105,10 +105,13 @@ public class OrderCDCJob {
         LOG.info("   Database: {}", postgresDb);
         LOG.info("   Tables: orders, order_items");
         LOG.info("   Slot: flink_order_cdc_slot");
+        LOG.info("   Snapshot Mode: never (streaming logical changes only)");
 
-        Properties debeziumProps = new Properties();
-        debeziumProps.setProperty("snapshot.mode", "initial");
+         Properties debeziumProps = new Properties();
+        debeziumProps.setProperty("snapshot.mode", "never");
         debeziumProps.setProperty("decimal.handling.mode", "double");
+        debeziumProps.setProperty("publication.autocreate.mode", "disabled");
+        debeziumProps.setProperty("publication.name", "workshop_cdc");
 
         SourceFunction<String> ordersCdcSource = PostgreSQLSource.<String>builder()
             .hostname(postgresHost)
