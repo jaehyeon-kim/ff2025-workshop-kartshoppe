@@ -1,7 +1,8 @@
 package com.ververica.composable_job.flink.ordercdc;
 
-import com.ververica.cdc.connectors.postgres.PostgreSQLSource;
-import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.cdc.debezium.JsonDebeziumDeserializationSchema;
+import org.apache.flink.cdc.connectors.postgres.PostgreSQLSource;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -9,16 +10,19 @@ import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Properties;
+import java.util.Objects;
 
 /**
- * Flink CDC Job: PostgreSQL Orders → Kafka
+ * Flink CDC Job: PostgreSQL Order Items → Kafka
  *
- * This job demonstrates PATTERN: Change Data Capture (CDC) for real-time order processing
+ * This job demonstrates a real-time data pipeline using Change Data Capture (CDC).
+ * It captures INSERT events from the 'order_items' table in PostgreSQL, transforms
+ * the raw CDC event into a simple, clean JSON format, and publishes it to a Kafka topic
+ * for downstream consumption by services like inventory management.
  *
  * ARCHITECTURE:
  * <pre>
@@ -30,15 +34,14 @@ import java.util.Properties;
  * Flink CDC Source (Debezium)
  *   │
  *   ├─ Captures changes via PostgreSQL Write-Ahead Log (WAL)
- *   ├─ Reads from replication slot
+ *   ├─ Reads from a persistent replication slot
  *   │
  *   ▼
- * JSON Deserial
-
-ization
+ * Filter & Transform
  *   │
- *   ├─ Parse CDC events (before/after values)
- *   ├─ Filter for INSERT operations (new orders)
+ *   ├─ Filter for INSERT operations on the 'order_items' table
+ *   ├─ Map the raw Debezium event to a simple JSON object
+ *   │  (e.g., { "productId": ..., "quantity": ..., "orderId": ... })
  *   │
  *   ▼
  * Kafka Sink (order-events topic)
@@ -46,19 +49,20 @@ ization
  *   ├─ Downstream consumers: Inventory Job, Analytics, etc.
  *   │
  *   ▼
- * Inventory Deduction
+ * Inventory Deduction Service
  * </pre>
  *
  * KEY CONCEPTS:
- * - CDC (Change Data Capture): Capture database changes without polling
- * - Debezium: Open-source CDC framework
- * - WAL (Write-Ahead Log): PostgreSQL's transaction log
- * - Replication Slot: Persistent CDC position tracker
+ * - CDC (Change Data Capture): Capture database changes without polling.
+ * - Debezium: Open-source CDC framework used by the Flink connector.
+ * - WAL (Write-Ahead Log): PostgreSQL's transaction log, the source of changes.
+ * - Replication Slot: A cursor that tracks the position in the WAL, ensuring no events are missed.
  *
  * SETUP REQUIREMENTS:
- * 1. PostgreSQL with wal_level=logical (already configured in docker-compose.yml)
- * 2. Publication created: CREATE PUBLICATION paimon_cdc FOR ALL TABLES;
- * 3. Replication slot (auto-created by Flink CDC)
+ * 1. PostgreSQL with `wal_level=logical` (configured in docker-compose.yml).
+ * 2. A PostgreSQL Publication must be created. The name is configurable, e.g.:
+ *    `CREATE PUBLICATION workshop_cdc FOR ALL TABLES;`
+ * 3. A replication slot is automatically created by the Flink CDC source on first run.
  *
  * RUN THIS JOB:
  * <pre>
@@ -101,10 +105,13 @@ public class OrderCDCJob {
         LOG.info("   Database: {}", postgresDb);
         LOG.info("   Tables: orders, order_items");
         LOG.info("   Slot: flink_order_cdc_slot");
+        LOG.info("   Snapshot Mode: never (streaming logical changes only)");
 
-        Properties debeziumProps = new Properties();
-        debeziumProps.setProperty("snapshot.mode", "initial");
+         Properties debeziumProps = new Properties();
+        debeziumProps.setProperty("snapshot.mode", "never");
         debeziumProps.setProperty("decimal.handling.mode", "double");
+        debeziumProps.setProperty("publication.autocreate.mode", "disabled");
+        debeziumProps.setProperty("publication.name", "workshop_cdc");
 
         SourceFunction<String> ordersCdcSource = PostgreSQLSource.<String>builder()
             .hostname(postgresHost)
@@ -126,37 +133,44 @@ public class OrderCDCJob {
         );
 
         // ========================================
-        // STEP 3: Filter for INSERT Operations
+        // STEP 3: Filter for INSERT Operations from "order_items"
         // ========================================
 
         LOG.info("\n🔍 Filtering CDC Events");
         LOG.info("   - Filter for 'op=c' (CREATE/INSERT) operations");
         LOG.info("   - Ignore UPDATE/DELETE for this demo");
 
-        DataStream<String> newOrders = cdcStream
+        DataStream<String> newOrderItems = cdcStream
             .filter(new FilterFunction<String>() {
                 @Override
                 public boolean filter(String event) throws Exception {
                     // Filter for INSERT operations (op == 'c' in Debezium)
-                    // and only from orders table
+                    // and only from order_items table
                     return event.contains("\"op\":\"c\"") &&
                            event.contains("\"source\":{") &&
-                           event.contains("\"table\":\"orders\"");
+                           event.contains("\"table\":\"order_items\"");
                 }
             })
             .name("Filter New Orders (INSERT only)");
 
-        // ========================================
-        // STEP 4: Log CDC Events (for debugging)
-        // ========================================
+        // =============================================================
+        // STEP 4: Transform the event using the external Mapper class
+        // Converts to eg)
+        // {
+        //     "quantity": 1,
+        //     "productId": "PROD_0151",
+        //     "orderId": "727237df-9fd6-44f8-8a46-6defe27c7585",
+        //     "timestamp": 1762307641516
+        // }
+        // =============================================================
+        LOG.info("\n✨ Transforming CDC events to custom format");
 
-        newOrders.map(event -> {
-            LOG.info("📦 New Order CDC Event: {}", event.substring(0, Math.min(200, event.length())) + "...");
-            return event;
-        }).name("Log Order CDC Events");
+        DataStream<String> transformedStream = newOrderItems
+                .map(new OrderItemEventMapper())
+                .filter(Objects::nonNull);
 
         // ========================================
-        // STEP 5: Kafka Sink for Order Events
+        // STEP 5: Kafka Sink for Transformed Events
         // ========================================
 
         LOG.info("\n📤 Configuring Kafka Sink");
@@ -173,8 +187,8 @@ public class OrderCDCJob {
             )
             .build();
 
-        newOrders.sinkTo(kafkaSink)
-            .name("Orders → Kafka (order-events)");
+        transformedStream.sinkTo(kafkaSink)
+            .name("Transformed Orders → Kafka (order-events)");
 
         // ========================================
         // STEP 6: Execute Job

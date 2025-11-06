@@ -98,7 +98,7 @@ public class HybridSourceExample {
         // STEP 2: Create UNBOUNDED Kafka source for continuous updates
         KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
             .setBootstrapServers(bootstrapServers)
-            .setTopics("product-updates")
+            .setTopics("product_updates")
             .setGroupId("hybrid-source-example")
             .setStartingOffsets(OffsetsInitializer.latest())  // Only NEW messages after file
             .setValueOnlyDeserializer(new SimpleStringSchema())

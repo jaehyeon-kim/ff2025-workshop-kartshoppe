@@ -1,5 +1,6 @@
 package com.ververica.composable_job.flink.inventory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ververica.composable_job.flink.inventory.patterns.hybrid_source.HybridSourceExample;
 import com.ververica.composable_job.flink.inventory.shared.config.InventoryConfig;
 import com.ververica.composable_job.flink.inventory.shared.model.AlertEvent;
@@ -11,6 +12,8 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.connector.base.source.hybrid.HybridSource;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -22,62 +25,60 @@ import org.slf4j.LoggerFactory;
 /**
  * Inventory Management Job WITH ORDER DEDUCTION - Advanced Pattern Composition
  *
- * This enhanced version adds PATTERN 05: Multiple Sources + Order Processing
+ * This enhanced version processes both product updates and customer orders to maintain
+ * a real-time inventory count, and now publishes a clean 'products' topic.
  *
  * PATTERNS DEMONSTRATED:
  *
- * 1. PATTERN 01: Hybrid Source (Bounded → Unbounded)
- *    - Bootstrap from file: data/initial-products.json
- *    - Then stream from Kafka: product-updates topic
+ * 1. PATTERN 01: Multiple Sources & Co-Processing
+ *    - The job `connect`s two distinct data streams into a single `CoProcessFunction`:
+ *      a) The Product Stream, which uses a `Hybrid Source` to bootstrap from a file
+ *         (`data/initial-products.json`) before switching to an unbounded Kafka topic.
+ *      b) The Order Stream, which consumes real-time order events from Kafka.
  *
- * 2. PATTERN 02: Keyed State
- *    - Track inventory per product using ValueState
- *    - Shared state between product updates and order deductions
+ * 2. PATTERN 02: Shared Keyed State
+ *    - The `CoProcessFunction` uses `ValueState` to maintain the inventory and price for
+ *      each product key. This allows both the product and order streams to read from and
+ *      write to the same state for a given product.
  *
  * 3. PATTERN 03: Timers
- *    - Detect stale inventory (no updates for 1 hour)
- *    - Processing time timers for each product
+ *    - The `CoProcessFunction` uses processing time timers to detect and flag products
+ *      with stale inventory (no updates for a set period).
  *
  * 4. PATTERN 04: Side Outputs
- *    - Route alerts to different streams
- *    - LOW_STOCK, OUT_OF_STOCK, PRICE_DROP alerts
+ *    - Alerts for `LOW_STOCK`, `OUT_OF_STOCK`, and `PRICE_DROP` are routed from the
+ *      main process into dedicated streams for separate downstream handling.
  *
- * 5. PATTERN 05: Multiple Sources (NEW!)
- *    - Product updates source (hybrid: file + Kafka)
- *    - Order events source (Kafka only)
- *    - Both update the same keyed state
+ * 5. PATTERN 05: Data Enrichment & Republishing
+ *    - The job consumes raw product data, parses it into a clean `Product` object,
+ *      and sinks it to a canonical `products` topic for other microservices to use.
  *
- * 6. PATTERN 06: Real-time Inventory Deduction (NEW!)
- *    - Orders placed → inventory deducted
- *    - Out-of-stock detection
- *    - Complete e-commerce flow
- *
- * ARCHITECTURE:
+ * ARCHITECTURE (Updated):
  * <pre>
  * Product File  ──┐
- *                 ├─→ Hybrid Source → Product Parser ──┐
- * Product Kafka ──┘                                     │
- *                                                       ▼
- *                                          Shared Keyed State (per product)
- *                                                       ▲
- * Order Kafka ───→ Order Parser → Deduction Function ──┘
- *                                          │
- *                    ┌─────────────────────┼─────────────────────┐
- *                    ▼                     ▼                     ▼
- *              Inventory Events    Low Stock Alerts    Out of Stock Alerts
- *                    │                     │                     │
- *                    ▼                     └─────────────────────┘
- *            Kafka: inventory-events         Kafka: inventory-alerts
- *                    │
- *                    ▼
- *            Kafka: websocket_fanout (Real-time UI updates)
+ *                 ├─→ Hybrid Source → Product Parser ──┬─→ Kafka: products (for other services)
+ * Product Kafka ──┘                                    │
+ *                                                      ▼
+ *                                         CoProcessFunction (Shared Keyed State)
+ *                                                      ▲
+ * Order Kafka ───→ Order Parser ───────────────────────┘
+ *                                         │
+ *                   ┌─────────────────────┼─────────────────────┐
+ *                   ▼                     ▼                     ▼
+ *             Inventory Events    Low Stock Alerts    Out of Stock Alerts
+ *                   │                     │                     │
+ *                   ▼                     └─────────────────────┘
+ *           Kafka: inventory-events         Kafka: inventory-alerts
+ *                   │
+ *                   ▼
+ *           Kafka: websocket_fanout (Real-time UI updates)
  * </pre>
  *
  * LEARNING OUTCOMES:
- * - Understand how multiple sources can update the same keyed state
- * - See real-time inventory depletion in action
- * - Learn complete event-driven e-commerce architecture
- * - PostgreSQL → Quarkus → Kafka → Flink → UI (full stack)
+ * - Understand how to use a CoProcessFunction to manage shared state between two streams.
+ * - See a full event-driven e-commerce architecture in action.
+ * - Learn how a Flink job can act as a data enricher, consuming raw data and
+ *   producing a clean, canonical topic for a broader microservices ecosystem.
  *
  * RUN THIS JOB:
  * <pre>
@@ -97,6 +98,7 @@ import org.slf4j.LoggerFactory;
 public class InventoryManagementJobWithOrders {
 
     private static final Logger LOG = LoggerFactory.getLogger(InventoryManagementJobWithOrders.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static void main(String[] args) throws Exception {
 
@@ -116,7 +118,7 @@ public class InventoryManagementJobWithOrders {
         LOG.info("🆕 NEW: This job processes orders and deducts inventory!");
 
         // ========================================
-        // STEP 2: PATTERN 01 - Hybrid Source (Products)
+        // STEP 2: PATTERN 01 (Part 1) - Product Source
         // ========================================
 
         LOG.info("\n📥 PATTERN 01: Creating Product Hybrid Source (File → Kafka)");
@@ -138,11 +140,32 @@ public class InventoryManagementJobWithOrders {
             .name("Parse Product JSON")
             .uid("product-parser");
 
+        // =============================================================
+        // STEP 3: PATTERN 05 - Data Enrichment & Republishing
+        // =============================================================
+
+        LOG.info("\n📤 PATTERN 05: Sinking clean product data to 'products' topic for other services");
+
+        KafkaSink<String> productsSink = KafkaSink.<String>builder()
+            .setBootstrapServers(config.getKafkaBootstrapServers())
+            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+                .setTopic("products")
+                .setValueSerializationSchema(new SimpleStringSchema())
+                .build()
+            )
+            .build();
+
+        productStream
+            .map(product -> MAPPER.writeValueAsString(product))
+            .sinkTo(productsSink)
+            .name("Sink to products topic")
+            .uid("products-sink");
+
         // ========================================
-        // STEP 3: PATTERN 05 - Order Events Source (NEW!)
+        // STEP 4: PATTERN 01 (Part 2) - Order Events Source
         // ========================================
 
-        LOG.info("\n📦 PATTERN 05: Creating Order Events Source (Kafka)");
+        LOG.info("\n📦 PATTERN 01: Creating Order Events Source (Kafka)");
         LOG.info("   Topic: order-events");
         LOG.info("   Purpose: Real-time inventory deduction from orders");
 
@@ -165,62 +188,28 @@ public class InventoryManagementJobWithOrders {
             .name("Parse Order Item JSON")
             .uid("order-parser");
 
-        // ========================================
-        // STEP 4: PATTERNS 02, 03, 04 - Product Inventory Tracking
-        // ========================================
+        // =================================================================
+        // STEP 5: PATTERNS 01, 02, 03, 04 - Co-Process and Shared State
+        // =================================================================
+        LOG.info("\n🤝 Connecting product and order streams to a CoProcessFunction...");
+        LOG.info("   PATTERN 02: It will use Shared Keyed State for inventory.");
+        LOG.info("   PATTERN 03: It will use Timers to detect stale products.");
+        LOG.info("   PATTERN 04: It will use Side Outputs to route alerts.");
 
-        LOG.info("\n🔧 PATTERNS 02, 03, 04: Product Inventory State Management");
+        SingleOutputStreamOperator<InventoryEvent> allInventoryEvents = productStream
+                .keyBy(product -> product.productId)
+                .connect(orderStream.keyBy(order -> order.productId))
+                .process(new SharedInventoryProcessor())
+                .name("Shared Inventory State Processor")
+                .uid("shared-inventory-state");
 
-        SingleOutputStreamOperator<InventoryEvent> productInventoryEvents = productStream
-            .keyBy(product -> product.productId)
-            .process(new InventoryStateFunction())
-            .name("Product Inventory State (Patterns 02+03+04)")
-            .uid("product-inventory-state");
-
-        // ========================================
-        // STEP 5: PATTERN 06 - Inventory Deduction from Orders (NEW!)
-        // ========================================
-
-        LOG.info("\n📉 PATTERN 06: Inventory Deduction from Orders");
-        LOG.info("   - Orders placed → inventory deducted");
-        LOG.info("   - Shares same keyed state as product updates");
-        LOG.info("   - Detects out-of-stock scenarios");
-
-        SingleOutputStreamOperator<InventoryEvent> orderInventoryEvents = orderStream
-            .keyBy(order -> order.productId)
-            .process(new InventoryDeductionFunction())
-            .name("Order Inventory Deduction (Pattern 06)")
-            .uid("order-inventory-deduction");
+        // Extract the side outputs for alerts directly from the new, single operator.
+        DataStream<AlertEvent> allAlerts = allInventoryEvents.getSideOutput(SharedInventoryProcessor.LOW_STOCK_TAG)
+                .union(allInventoryEvents.getSideOutput(SharedInventoryProcessor.OUT_OF_STOCK_TAG),
+                    allInventoryEvents.getSideOutput(SharedInventoryProcessor.PRICE_DROP_TAG));
 
         // ========================================
-        // STEP 6: Union Both Event Streams
-        // ========================================
-
-        LOG.info("\n🔀 Combining Product Updates + Order Deductions");
-
-        DataStream<InventoryEvent> allInventoryEvents = productInventoryEvents
-            .union(orderInventoryEvents);
-
-        // ========================================
-        // STEP 7: PATTERN 04 - Extract Side Outputs
-        // ========================================
-
-        LOG.info("\n🎯 PATTERN 04: Extracting Alert Side Outputs");
-
-        DataStream<AlertEvent> lowStockAlerts = productInventoryEvents
-            .getSideOutput(InventoryStateFunction.LOW_STOCK_TAG);
-
-        DataStream<AlertEvent> outOfStockAlerts = productInventoryEvents
-            .getSideOutput(InventoryStateFunction.OUT_OF_STOCK_TAG);
-
-        DataStream<AlertEvent> priceDropAlerts = productInventoryEvents
-            .getSideOutput(InventoryStateFunction.PRICE_DROP_TAG);
-
-        DataStream<AlertEvent> allAlerts = lowStockAlerts
-            .union(outOfStockAlerts, priceDropAlerts);
-
-        // ========================================
-        // STEP 8: Sinks - Output to Kafka
+        // STEP 6: Sinks - Output to Kafka
         // ========================================
 
         LOG.info("\n📤 Configuring Kafka Sinks");
@@ -235,7 +224,7 @@ public class InventoryManagementJobWithOrders {
         SinkFactory.sinkToWebSocket(allInventoryEvents, config);
 
         // ========================================
-        // STEP 9: Execute Job
+        // STEP 7: Execute Job
         // ========================================
 
         LOG.info("\n✅ Job configured with COMPLETE inventory depletion!");

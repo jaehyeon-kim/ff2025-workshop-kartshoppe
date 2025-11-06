@@ -10,6 +10,7 @@ const CheckoutPage: React.FC = () => {
   const [processing, setProcessing] = useState(false)
   const [orderComplete, setOrderComplete] = useState(false)
   const [orderId, setOrderId] = useState('')
+  const [useCdc, setUseCdc] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -36,10 +37,15 @@ const CheckoutPage: React.FC = () => {
     e.preventDefault()
     setProcessing(true)
 
+    const sessionIdForCheckout = EventTracker.getSessionId();
+    console.log("==> Submitting checkout for sessionId:", sessionIdForCheckout);
+
     try {
       const response = await axios.post('/api/ecommerce/checkout', {
-        sessionId: sessionStorage.getItem('sessionId'),
-        userId: sessionStorage.getItem('userId'),
+        sessionId: sessionIdForCheckout,
+        userId: EventTracker.getUserId(),
+        // sessionId: sessionStorage.getItem('sessionId'),
+        // userId: sessionStorage.getItem('userId'),
         shippingAddress: {
           name: formData.name,
           street: formData.street,
@@ -48,7 +54,8 @@ const CheckoutPage: React.FC = () => {
           zipCode: formData.zipCode,
           country: formData.country
         },
-        paymentMethod: 'credit_card'
+        paymentMethod: 'credit_card',
+        useCdc: useCdc
       })
 
       EventTracker.trackEvent('ORDER_PLACED', {
@@ -286,6 +293,22 @@ const CheckoutPage: React.FC = () => {
                 <div className="flex justify-between text-xl font-bold text-gray-900">
                   <span>Total</span>
                   <span>${total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="useCdc"
+                    name="useCdc"
+                    checked={useCdc}
+                    onChange={(e) => setUseCdc(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <label htmlFor="useCdc" className="ml-3 block text-sm font-medium text-gray-700">
+                    Use Flink CDC (Event-Driven)
+                  </label>
                 </div>
               </div>
 

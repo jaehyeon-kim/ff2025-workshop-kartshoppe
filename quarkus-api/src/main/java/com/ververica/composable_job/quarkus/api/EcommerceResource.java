@@ -152,6 +152,8 @@ public class EcommerceResource {
     @POST
     @Path("/cart/{sessionId}/add")
     public Response addToCart(@PathParam("sessionId") String sessionId, CartAddRequest request) {
+        Log.infof("--> ADD TO CART called for sessionId: %s", sessionId);
+        
         ShoppingCart cart = carts.computeIfAbsent(sessionId, 
             k -> new ShoppingCart(UUID.randomUUID().toString(), sessionId, request.userId, System.currentTimeMillis()));
         
@@ -162,7 +164,10 @@ public class EcommerceResource {
         
         CartItem item = new CartItem(product.productId, product.name, product.price, 
                                      request.quantity, product.imageUrl, System.currentTimeMillis());
-        cart.addItem(item);
+        // cart.addItem(item);
+        cart.upsertItem(item);
+
+        Log.infof("  Cart updated. Current carts on server: %s", carts.keySet());
         
         // Send cart update event
         try {
@@ -179,8 +184,28 @@ public class EcommerceResource {
     @Path("/checkout")
     @Transactional
     public Response checkout(CheckoutRequest request) {
+        if (request == null || request.sessionId == null || request.sessionId.isBlank()) {
+            Log.warn("❌ CHECKOUT FAILED: Received a checkout request with a null or empty sessionId.");
+            return Response.status(Response.Status.BAD_REQUEST).entity("Session ID is missing.").build();
+        }
+
+        Log.infof("--> CHECKOUT called for sessionId: %s", request.sessionId);
+        Log.infof("    Current carts on server: %s", carts.keySet());
+
         ShoppingCart cart = carts.get(request.sessionId);
-        if (cart == null || cart.items.isEmpty()) {
+        if (cart == null) {
+            Log.warnf("❌ CHECKOUT FAILED: Cart object is NULL for sessionId: %s.", request.sessionId);
+            return Response.status(Response.Status.BAD_REQUEST).entity("Cart not found.").build();
+        }
+
+        if (cart.items == null) {
+            Log.warn("❌ CHECKOUT FAILED: cart.items collection is NULL.");
+            return Response.status(Response.Status.BAD_REQUEST).entity("Cart items are missing.").build();
+        }
+        Log.infof("  Cart found with %d items.", cart.items.size());
+
+        if (cart.items.isEmpty()) {
+            Log.warn("❌ CHECKOUT FAILED: Cart is empty.");
             return Response.status(Response.Status.BAD_REQUEST)
                 .entity("Cart is empty")
                 .build();
@@ -205,6 +230,8 @@ public class EcommerceResource {
         // PHASE 1: Persist to PostgreSQL for CDC
         // ========================================
         try {
+            Log.info("  Attempting to persist order to PostgreSQL...");
+
             // Convert shipping address to JSON string
             String shippingAddressJson = null;
             if (order.shippingAddress != null) {
@@ -239,10 +266,12 @@ public class EcommerceResource {
             // Persist to PostgreSQL (will trigger CDC)
             orderEntity.persist();
 
-            Log.infof("✅ Order %s persisted to PostgreSQL (CDC will detect this)", order.orderId);
+            Log.info("  ✅ Order " + order.orderId + " persisted to PostgreSQL successfully!");
+            // Log.infof("✅ Order %s persisted to PostgreSQL (CDC will detect this)", order.orderId);
 
         } catch (Exception e) {
-            Log.errorf("❌ Failed to persist order to PostgreSQL: %s", e.getMessage(), e);
+            Log.error("  ❌ CHECKOUT FAILED: Failed to persist order to PostgreSQL!", e);
+            // Log.errorf("❌ Failed to persist order to PostgreSQL: %s", e.getMessage(), e);
             return Response.serverError().entity("Failed to process order").build();
         }
 
@@ -260,23 +289,33 @@ public class EcommerceResource {
 
         // ========================================
         // Publish Order Items for Inventory Deduction
+        //      Comment out if OrderCDCJob is used!
         // ========================================
-        try {
-            for (CartItem item : cart.items) {
-                Map<String, Object> orderItemEvent = new HashMap<>();
-                orderItemEvent.put("orderId", order.orderId);
-                orderItemEvent.put("productId", item.productId);
-                orderItemEvent.put("quantity", item.quantity);
-                orderItemEvent.put("timestamp", System.currentTimeMillis());
+        if (!request.useCdc) {
+            try {
+                Log.info("  Attempting to publish order items to Kafka...");
 
-                String json = MAPPER.writeValueAsString(orderItemEvent);
-                orderEventEmitter.send(json);
-                Log.infof("📦 Published order item for inventory deduction: %s x%d", item.productId, item.quantity);
+                for (CartItem item : cart.items) {
+                    Map<String, Object> orderItemEvent = new HashMap<>();
+                    orderItemEvent.put("orderId", order.orderId);
+                    orderItemEvent.put("productId", item.productId);
+                    orderItemEvent.put("quantity", item.quantity);
+                    orderItemEvent.put("timestamp", System.currentTimeMillis());
+
+                    String json = MAPPER.writeValueAsString(orderItemEvent);
+                    orderEventEmitter.send(json);
+                    Log.infof("    📦 SUCCESSFULLY PUBLISHED order item for inventory deduction: %s x%d", item.productId, item.quantity);
+                    // Log.infof("📦 Published order item for inventory deduction: %s x%d", item.productId, item.quantity);
+                }
+            } catch (Exception e) {
+                Log.error("  ❌ CHECKOUT FAILED: Failed to publish order items to Kafka!", e);
+                // Log.error("Failed to publish order items", e);
             }
-        } catch (Exception e) {
-            Log.error("Failed to publish order items", e);
+        } else {
+            Log.info("  CDC mode enabled by frontend. Skipping direct Kafka publish.");
         }
 
+        Log.info("✅ CHECKOUT ENDPOINT COMPLETED SUCCESSFULLY."); 
         return Response.ok(order).build();
     }
 
@@ -322,5 +361,7 @@ public class EcommerceResource {
         public String userId;
         public Order.ShippingAddress shippingAddress;
         public String paymentMethod;
+        // This field will capture the state of the 'Use CDC' checkbox from the frontend.
+        public boolean useCdc; 
     }
 }

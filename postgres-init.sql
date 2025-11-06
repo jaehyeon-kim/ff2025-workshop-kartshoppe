@@ -60,30 +60,30 @@ CREATE TABLE IF NOT EXISTS orders (
     payment_method VARCHAR(50),
     shipping_address TEXT,
     tracking_number VARCHAR(100),
-    notes TEXT,
-    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+    notes TEXT
+    -- FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
 );
 
 -- ============================================
 -- 4. ORDER_ITEMS TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS order_items (
-    order_item_id SERIAL PRIMARY KEY,
+    order_item_id BIGSERIAL PRIMARY KEY,
     order_id VARCHAR(50) NOT NULL,
     product_id VARCHAR(50) NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1,
     unit_price DECIMAL(10, 2) NOT NULL,
     discount DECIMAL(10, 2) DEFAULT 0.00,
-    line_total DECIMAL(10, 2) NOT NULL,
-    FOREIGN KEY (order_id) REFERENCES orders(order_id),
-    FOREIGN KEY (product_id) REFERENCES products(product_id)
+    line_total DECIMAL(10, 2) NOT NULL
+    -- FOREIGN KEY (order_id) REFERENCES orders(order_id),
+    -- FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
 -- ============================================
 -- 5. INVENTORY TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS inventory (
-    inventory_id SERIAL PRIMARY KEY,
+    inventory_id BIGSERIAL PRIMARY KEY,
     product_id VARCHAR(50) NOT NULL UNIQUE,
     warehouse_location VARCHAR(100) DEFAULT 'MAIN',
     quantity_on_hand INTEGER DEFAULT 0,
@@ -92,8 +92,8 @@ CREATE TABLE IF NOT EXISTS inventory (
     reorder_point INTEGER DEFAULT 10,
     reorder_quantity INTEGER DEFAULT 50,
     last_restock_date TIMESTAMP,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products(product_id)
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    -- FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
 -- ============================================
@@ -106,61 +106,55 @@ CREATE TABLE IF NOT EXISTS product_views (
     session_id VARCHAR(100),
     view_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     source VARCHAR(50),
-    device_type VARCHAR(50),
-    FOREIGN KEY (product_id) REFERENCES products(product_id)
+    device_type VARCHAR(50)
+    -- FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
 -- ============================================
 -- SAMPLE DATA: PRODUCTS
+--   Copy from generate_insert_sql.py 
 -- ============================================
 
--- Electronics
-INSERT INTO products (product_id, product_name, category, subcategory, brand, price, cost, description) VALUES
-('prod_laptop_001', 'Gaming Laptop Pro', 'electronics', 'computers', 'TechBrand', 1299.99, 850.00, '15.6" high-performance gaming laptop'),
-('prod_laptop_002', 'Business Ultrabook', 'electronics', 'computers', 'ProTech', 999.99, 650.00, 'Lightweight 13" ultrabook for professionals'),
-('prod_mouse_001', 'Wireless Gaming Mouse', 'electronics', 'peripherals', 'TechBrand', 59.99, 25.00, 'RGB wireless gaming mouse'),
-('prod_keyboard_001', 'Mechanical Keyboard', 'electronics', 'peripherals', 'TechBrand', 89.99, 40.00, 'RGB mechanical gaming keyboard'),
-('prod_monitor_001', '27" 4K Monitor', 'electronics', 'displays', 'ViewMax', 399.99, 250.00, '27-inch 4K UHD monitor'),
-('prod_headset_001', 'Wireless Headset', 'electronics', 'audio', 'SoundPro', 149.99, 75.00, 'Noise-cancelling wireless headset'),
-('prod_phone_001', 'Smartphone Pro', 'electronics', 'mobile', 'MobileTech', 899.99, 550.00, '6.5" flagship smartphone'),
-('prod_charger_001', 'Fast Charger 65W', 'electronics', 'accessories', 'PowerUp', 29.99, 12.00, 'USB-C fast charger'),
-('prod_case_001', 'Phone Case Premium', 'electronics', 'accessories', 'GuardTech', 24.99, 8.00, 'Protective phone case'),
-('prod_camera_001', 'DSLR Camera Pro', 'electronics', 'photography', 'PhotoMax', 1499.99, 950.00, 'Professional DSLR camera'),
-('prod_sd_card_001', 'SD Card 128GB', 'electronics', 'storage', 'DataStore', 34.99, 15.00, 'High-speed SD card'),
-('prod_tripod_001', 'Camera Tripod', 'electronics', 'photography', 'StablePro', 79.99, 35.00, 'Adjustable camera tripod');
+INSERT INTO products (product_id, product_name, category, brand, price, description, image_url, is_active) VALUES
+    ('PROD_0001', 'FutureTech UltraBook Pro 15', 'Electronics', 'FutureTech', 1899.99, 'High-performance laptop with Intel i9, 32GB RAM, 1TB SSD. Premium quality from FutureTech.', 'https://picsum.photos/400/300?random=1', true),
+    ('PROD_0003', 'InnovateTech Wireless Noise-Canceling Headphones', 'Electronics', 'InnovateTech', 349.99, 'Premium ANC headphones with 30-hour battery. Premium quality from InnovateTech.', 'https://picsum.photos/400/300?random=3', true),
+    ('PROD_0028', 'ModernFit Designer Leather Jacket', 'Fashion', 'ModernFit', 599.99, 'Premium Italian leather with modern cut. Premium quality from ModernFit.', 'https://picsum.photos/400/300?random=28', true),
+    ('PROD_0029', 'ModernFit Designer Leather Jacket Pro', 'Fashion', 'ModernFit', 719.99, 'Premium Italian leather with modern cut. Premium quality from ModernFit.', 'https://picsum.photos/400/300?random=29', true),
+    ('PROD_0054', 'ComfortZone Smart Coffee Maker', 'Home & Garden', 'ComfortZone', 299.99, 'WiFi-enabled with scheduling and grinder. Premium quality from ComfortZone.', 'https://picsum.photos/400/300?random=54', true),
+    ('PROD_0055', 'SmartHome Smart Coffee Maker Pro', 'Home & Garden', 'SmartHome', 359.99, 'WiFi-enabled with scheduling and grinder. Premium quality from SmartHome.', 'https://picsum.photos/400/300?random=55', true),
+    ('PROD_0079', 'FitPro Premium Yoga Mat', 'Sports', 'FitPro', 89.99, 'Extra thick with alignment guides. Premium quality from FitPro.', 'https://picsum.photos/400/300?random=79', true),
+    ('PROD_0080', 'FitPro Premium Yoga Mat Pro', 'Sports', 'FitPro', 107.99, 'Extra thick with alignment guides. Premium quality from FitPro.', 'https://picsum.photos/400/300?random=80', true),
+    ('PROD_0104', 'ReadMore The Innovation Paradox', 'Books', 'ReadMore', 29.99, 'Bestselling business strategy guide. Premium quality from ReadMore.', 'https://picsum.photos/400/300?random=104', true),
+    ('PROD_0105', 'PageTurner The Innovation Paradox Pro', 'Books', 'PageTurner', 35.99, 'Bestselling business strategy guide. Premium quality from PageTurner.', 'https://picsum.photos/400/300?random=105', true),
+    ('PROD_0128', 'KidsJoy LEGO Architecture Set', 'Toys', 'KidsJoy', 149.99, 'Build famous landmarks. Premium quality from KidsJoy.', 'https://picsum.photos/400/300?random=128', true),
+    ('PROD_0129', 'ToyLand LEGO Architecture Set Pro', 'Toys', 'ToyLand', 179.99, 'Build famous landmarks. Premium quality from ToyLand.', 'https://picsum.photos/400/300?random=129', true),
+    ('PROD_0151', 'BeautyPlus Anti-Aging Serum', 'Beauty', 'BeautyPlus', 89.99, 'Retinol and vitamin C formula. Premium quality from BeautyPlus.', 'https://picsum.photos/400/300?random=151', true),
+    ('PROD_0152', 'GlowUp Anti-Aging Serum Pro', 'Beauty', 'GlowUp', 107.99, 'Retinol and vitamin C formula. Premium quality from GlowUp.', 'https://picsum.photos/400/300?random=152', true),
+    ('PROD_0175', 'Artisan Foods Organic Coffee Beans', 'Food & Grocery', 'Artisan Foods', 34.99, 'Single origin Ethiopian (2 lbs). Premium quality from Artisan Foods.', 'https://picsum.photos/400/300?random=175', true),
+    ('PROD_0176', 'Artisan Foods Organic Coffee Beans Pro', 'Food & Grocery', 'Artisan Foods', 41.99, 'Single origin Ethiopian (2 lbs). Premium quality from Artisan Foods.', 'https://picsum.photos/400/300?random=176', true);
 
--- Fashion
-INSERT INTO products (product_id, product_name, category, subcategory, brand, price, cost, description) VALUES
-('prod_shirt_001', 'Casual Cotton Shirt', 'fashion', 'tops', 'StyleCo', 39.99, 18.00, 'Comfortable cotton casual shirt'),
-('prod_pants_001', 'Chino Pants', 'fashion', 'bottoms', 'StyleCo', 49.99, 22.00, 'Classic fit chino pants'),
-('prod_dress_001', 'Summer Dress', 'fashion', 'dresses', 'Elegance', 69.99, 30.00, 'Floral summer dress'),
-('prod_shoes_001', 'Running Shoes', 'fashion', 'footwear', 'ActiveGear', 89.99, 40.00, 'Lightweight running shoes'),
-('prod_belt_001', 'Leather Belt', 'fashion', 'accessories', 'ClassicWear', 29.99, 12.00, 'Genuine leather belt'),
-('prod_jeans_001', 'Slim Fit Jeans', 'fashion', 'bottoms', 'DenimPro', 59.99, 28.00, 'Modern slim fit jeans'),
-('prod_jacket_001', 'Winter Jacket', 'fashion', 'outerwear', 'WarmStyle', 129.99, 65.00, 'Insulated winter jacket'),
-('prod_scarf_001', 'Wool Scarf', 'fashion', 'accessories', 'CozyWear', 24.99, 10.00, 'Soft wool scarf');
+-- ============================================
+-- SAMPLE DATA: INVENTORY
+--   Copy from generate_insert_sql.py 
+-- ============================================
 
--- Home & Kitchen
-INSERT INTO products (product_id, product_name, category, subcategory, brand, price, cost, description) VALUES
-('prod_coffee_maker_001', 'Coffee Maker Deluxe', 'home_kitchen', 'appliances', 'BrewMaster', 89.99, 45.00, 'Programmable coffee maker'),
-('prod_coffee_beans_001', 'Premium Coffee Beans 1lb', 'home_kitchen', 'groceries', 'RoastCo', 14.99, 6.00, 'Arabica coffee beans'),
-('prod_filters_001', 'Coffee Filters 200ct', 'home_kitchen', 'supplies', 'BrewMaster', 5.99, 2.00, 'Paper coffee filters'),
-('prod_blender_001', 'High-Speed Blender', 'home_kitchen', 'appliances', 'BlendPro', 129.99, 60.00, 'Professional blender'),
-('prod_pan_001', 'Non-Stick Frying Pan', 'home_kitchen', 'cookware', 'ChefLine', 39.99, 18.00, '12-inch frying pan'),
-('prod_spatula_001', 'Silicone Spatula Set', 'home_kitchen', 'utensils', 'ChefLine', 19.99, 8.00, 'Heat-resistant spatula set'),
-('prod_knife_set_001', 'Kitchen Knife Set', 'home_kitchen', 'cutlery', 'SharpEdge', 79.99, 35.00, '5-piece knife set'),
-('prod_cutting_board_001', 'Bamboo Cutting Board', 'home_kitchen', 'prep', 'EcoKitchen', 29.99, 12.00, 'Large bamboo board');
-
--- Sports & Outdoors
-INSERT INTO products (product_id, product_name, category, subcategory, brand, price, cost, description) VALUES
-('prod_yoga_mat_001', 'Premium Yoga Mat', 'sports', 'fitness', 'FlexFit', 39.99, 18.00, 'Extra-thick yoga mat'),
-('prod_yoga_blocks_001', 'Yoga Block Set', 'sports', 'fitness', 'FlexFit', 19.99, 8.00, 'Foam yoga blocks (2-pack)'),
-('prod_water_bottle_001', 'Insulated Water Bottle', 'sports', 'hydration', 'HydroMax', 24.99, 10.00, '32oz insulated bottle'),
-('prod_bicycle_001', 'Mountain Bike Pro', 'sports', 'cycling', 'RideTech', 599.99, 350.00, '27.5" mountain bike'),
-('prod_helmet_001', 'Bike Helmet', 'sports', 'cycling', 'SafeRide', 49.99, 22.00, 'Adjustable bike helmet'),
-('prod_dumbbells_001', 'Dumbbell Set 20lb', 'sports', 'strength', 'IronFit', 79.99, 40.00, 'Adjustable dumbbells'),
-('prod_tennis_racket_001', 'Tennis Racket Pro', 'sports', 'racquet', 'CourtKing', 129.99, 65.00, 'Professional tennis racket'),
-('prod_tennis_balls_001', 'Tennis Balls 12-pack', 'sports', 'racquet', 'CourtKing', 19.99, 8.00, 'High-visibility tennis balls');
+INSERT INTO inventory (product_id, quantity_on_hand, quantity_reserved, reorder_point, reorder_quantity) VALUES
+    ('PROD_0001', 10, 0, 10, 20),
+    ('PROD_0003', 8, 0, 10, 20),
+    ('PROD_0028', 15, 0, 10, 20),
+    ('PROD_0029', 7, 0, 10, 20),
+    ('PROD_0054', 23, 0, 10, 20),
+    ('PROD_0055', 32, 0, 10, 20),
+    ('PROD_0079', 70, 0, 10, 20),
+    ('PROD_0080', 48, 0, 10, 20),
+    ('PROD_0104', 184, 0, 10, 20),
+    ('PROD_0105', 79, 0, 10, 20),
+    ('PROD_0128', 74, 0, 10, 20),
+    ('PROD_0129', 75, 0, 10, 20),
+    ('PROD_0151', 99, 0, 10, 20),
+    ('PROD_0152', 44, 0, 10, 20),
+    ('PROD_0175', 160, 0, 10, 20),
+    ('PROD_0176', 166, 0, 10, 20);
 
 -- ============================================
 -- SAMPLE DATA: CUSTOMERS
@@ -173,16 +167,10 @@ INSERT INTO customers (customer_id, email, first_name, last_name, phone, city, s
 ('cust_005', 'charlie.brown@email.com', 'Charlie', 'Brown', '555-0105', 'Portland', 'OR', 12, 5678.90);
 
 -- ============================================
--- SAMPLE DATA: INVENTORY
--- ============================================
-INSERT INTO inventory (product_id, quantity_on_hand, quantity_reserved, reorder_point, reorder_quantity)
-SELECT product_id, 100, 0, 20, 50 FROM products;
-
--- ============================================
 -- PUBLICATION FOR CDC
 -- ============================================
 -- Create a publication for all tables (Flink CDC will subscribe to this)
-CREATE PUBLICATION paimon_cdc FOR ALL TABLES;
+CREATE PUBLICATION workshop_cdc FOR ALL TABLES;
 
 -- ============================================
 -- INDEXES FOR PERFORMANCE
@@ -227,7 +215,7 @@ FROM customers;
 
 \echo '========================================='
 \echo 'E-Commerce Database Ready for CDC!'
-\echo 'Publication created: paimon_cdc'
+\echo 'Publication created: workshop_cdc'
 \echo 'Tables: products, customers, orders, order_items, inventory, product_views'
 \echo 'WAL Level: logical (CDC-ready)'
 \echo '========================================='

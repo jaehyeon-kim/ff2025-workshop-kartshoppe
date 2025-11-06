@@ -107,28 +107,36 @@ public class ProductCacheService {
         }
     }
     
-    public void updateProduct(Product product) {
-        boolean isNew = !productCache.containsKey(product.productId);
-        productCache.put(product.productId, product);
+    public void updateProduct(Product productUpdate) {
+        // A full product object will have a name. A partial update from inventoryStream will not.
+        if (productUpdate.name == null || productUpdate.name.isEmpty()) {
+            // This is a PARTIAL update for inventory/price.
+            Product existingProduct = productCache.get(productUpdate.productId);
 
-        Log.infof("🔄 %s product %s (%s) - total products in cache: %d",
-            isNew ? "Added new" : "Updated", product.productId, product.name, productCache.size());
+            if (existingProduct != null) {
+                // MERGE the update into the full object that already exists in the cache.
+                existingProduct.inventory = productUpdate.inventory;
+                existingProduct.price = productUpdate.price;
+                
+                Log.infof("🔄 Merged inventory update for product %s (%s) - new inventory: %d",
+                    existingProduct.productId, existingProduct.name, existingProduct.inventory);
+                
+                // Send the complete, updated product to the WebSocket.
+                sendWebSocketUpdate(existingProduct);
+            } else {
+                // This is expected if the inventory event arrives before the full product details.
+                Log.warnf("Received inventory update for product %s, but full details are not yet in cache. Ignoring.", productUpdate.productId);
+            }
+        } else {
+            // This is a FULL product object, coming from the other consumer.
+            // The original logic is correct for this case.
+            boolean isNew = !productCache.containsKey(productUpdate.productId);
+            productCache.put(productUpdate.productId, productUpdate);
 
-        // Send individual product update
-        try {
-            ProcessingEvent<Product> updateEvent = new ProcessingEvent<>(
-                UUID.randomUUID().toString(),
-                System.currentTimeMillis(),
-                product.productId,
-                null,
-                ProcessingEvent.Type.PRODUCT_UPDATE,
-                product
-            );
+            Log.infof("🔄 %s product %s (%s) - total products in cache: %d",
+                isNew ? "Added new" : "Updated", productUpdate.productId, productUpdate.name, productCache.size());
 
-            websocketEmitter.emmit(MAPPER.writeValueAsString(updateEvent));
-            Log.debugf("→ Sent WebSocket update for product %s", product.productId);
-        } catch (Exception e) {
-            Log.error("Failed to send product update", e);
+            sendWebSocketUpdate(productUpdate);
         }
     }
     
@@ -169,7 +177,25 @@ public class ProductCacheService {
                         p.tags.stream().anyMatch(t -> t.toLowerCase().contains(searchLower)))
             .toList();
     }
-    
+
+    private void sendWebSocketUpdate(Product product) {
+        try {
+            ProcessingEvent<Product> updateEvent = new ProcessingEvent<>(
+                UUID.randomUUID().toString(),
+                System.currentTimeMillis(),
+                product.productId,
+                null,
+                ProcessingEvent.Type.PRODUCT_UPDATE,
+                product
+            );
+
+            websocketEmitter.emmit(MAPPER.writeValueAsString(updateEvent));
+            Log.debugf("→ Sent WebSocket update for product %s", product.productId);
+        } catch (Exception e) {
+            Log.error("Failed to send product update", e);
+        }
+    }    
+
     /**
      * DEPRECATED: Do not call this method in production!
      *

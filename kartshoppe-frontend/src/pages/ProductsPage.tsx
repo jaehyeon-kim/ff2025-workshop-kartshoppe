@@ -88,24 +88,6 @@ const ProductsPage: React.FC = () => {
     EventTracker.trackEvent('SORT_CHANGE', { sortBy: sort })
   }
 
-  const generateMockProducts = () => {
-    const products = []
-    for (let i = 1; i <= 20; i++) {
-      products.push({
-        productId: `prod_${i}`,
-        name: `Product ${i}`,
-        description: `High-quality product with excellent features.`,
-        price: Math.floor(Math.random() * 500) + 20,
-        imageUrl: `https://picsum.photos/400/300?random=${i}`,
-        category: categories[Math.floor(Math.random() * (categories.length - 1)) + 1],
-        rating: 3 + Math.random() * 2,
-        reviewCount: Math.floor(Math.random() * 500) + 10,
-        inventory: Math.floor(Math.random() * 50) + 1
-      })
-    }
-    return products
-  }
-
   return (
     <div className="space-y-6">
       {/* Search Bar */}

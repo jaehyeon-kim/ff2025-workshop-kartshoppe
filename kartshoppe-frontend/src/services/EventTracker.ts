@@ -86,6 +86,14 @@ export class EventTracker {
     })
   }
 
+  static getSessionId(): string {
+    return this.sessionId
+  }
+
+  static getUserId(): string {
+    return this.userId
+  }
+
   private static async flushEvents() {
     if (this.eventQueue.length === 0) return
 

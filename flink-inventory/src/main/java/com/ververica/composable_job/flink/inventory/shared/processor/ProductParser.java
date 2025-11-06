@@ -32,86 +32,41 @@ import org.slf4j.LoggerFactory;
  */
 public class ProductParser extends ProcessFunction<String, Product> {
 
-    private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(ProductParser.class);
-
-    // Transient because ObjectMapper is not serializable
-    // Will be recreated on each task manager
-    private transient ObjectMapper mapper;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
-    public void open(org.apache.flink.configuration.Configuration parameters) {
-        // Initialize ObjectMapper once per task
-        mapper = new ObjectMapper();
-        LOG.info("ProductParser initialized");
-    }
-
-    @Override
-    public void processElement(
-            String value,
-            Context ctx,
-            Collector<Product> out) throws Exception {
-
+    public void processElement(String value, Context ctx, Collector<Product> out) throws Exception {
+        LOG.info("!!!!!!!!!!!!!!!!!! PRODUCT PARSER PROCESS-ELEMENT CALLED !!!!!!!!!!!!!!!!!!");
         if (value == null || value.trim().isEmpty()) {
-            LOG.warn("Received null or empty input, skipping");
             return;
         }
 
         try {
             String trimmedValue = value.trim();
 
-            // Handle JSON array
+            // Check if the input is a JSON array (from the initial file)
             if (trimmedValue.startsWith("[")) {
-                Product[] products = mapper.readValue(trimmedValue, Product[].class);
+                LOG.info(">>>>>>>>>>>>>>> PARSING JSON ARRAY FROM FILE <<<<<<<<<<<<<<<");
+                Product[] products = MAPPER.readValue(trimmedValue, Product[].class);
                 for (Product product : products) {
-                    if (isValid(product)) {
-                        LOG.debug("Parsed product from array: {}", product.productId);
+                    if (product != null) {
                         out.collect(product);
-                    } else {
-                        LOG.warn("Invalid product in array, skipping: {}", product);
                     }
                 }
-            }
-            // Handle single JSON object
+            } 
+            // Check if the input is a single JSON object (from Kafka)
             else if (trimmedValue.startsWith("{")) {
-                Product product = mapper.readValue(trimmedValue, Product.class);
-                if (isValid(product)) {
-                    LOG.debug("Parsed single product: {}", product.productId);
+                Product product = MAPPER.readValue(trimmedValue, Product.class);
+                if (product != null) {
                     out.collect(product);
-                } else {
-                    LOG.warn("Invalid product, skipping: {}", product);
                 }
+            } else {
+                LOG.warn("Received non-JSON data: {}", trimmedValue.substring(0, Math.min(100, trimmedValue.length())));
             }
-            // Not JSON
-            else {
-                LOG.warn("Input is not JSON (doesn't start with [ or {{): {}",
-                    trimmedValue.substring(0, Math.min(100, trimmedValue.length())));
-            }
-
         } catch (Exception e) {
-            // Log but don't fail - continue processing other records
-            LOG.error("Failed to parse JSON: {}. Error: {}",
-                value.substring(0, Math.min(200, value.length())),
-                e.getMessage());
+            LOG.error("Failed to parse product JSON: {}", value, e);
+            // Do not re-throw, just log and skip the bad record.
         }
-    }
-
-    /**
-     * Validates that a product has required fields.
-     * In production, this would be more comprehensive.
-     */
-    private boolean isValid(Product product) {
-        if (product == null) {
-            return false;
-        }
-        if (product.productId == null || product.productId.trim().isEmpty()) {
-            LOG.warn("Product missing productId");
-            return false;
-        }
-        if (product.name == null || product.name.trim().isEmpty()) {
-            LOG.warn("Product {} missing name", product.productId);
-            return false;
-        }
-        return true;
     }
 }

@@ -3,6 +3,7 @@ package com.ververica.composable_job.model.ecommerce;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class ShoppingCart implements Serializable {
     public String cartId;
@@ -50,6 +51,20 @@ public class ShoppingCart implements Serializable {
                 recalculateTotal();
                 this.updatedAt = System.currentTimeMillis();
             });
+    }
+
+    public void upsertItem(CartItem newItem) {
+        Optional<CartItem> existingItemOpt = this.items.stream()
+                .filter(item -> item.productId.equals(newItem.productId))
+                .findFirst();
+
+        if (existingItemOpt.isPresent()) {
+            existingItemOpt.get().updateQuantity(newItem.quantity);
+        } else {
+            this.items.add(newItem);
+        }
+        recalculateTotal();
+        this.updatedAt = System.currentTimeMillis();
     }
 
     private void recalculateTotal() {
